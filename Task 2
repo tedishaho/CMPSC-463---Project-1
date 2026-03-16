@@ -1,0 +1,90 @@
+import pandas as pd
+import numpy as np
+import random
+
+# Load dataset
+zip_file_path = r"C:\Users\Tedi\Downloads\rul_hrs.csv.zip"
+df = pd.read_csv(zip_file_path, compression='zip', nrows=10000)
+
+# Convert RUL to 4 categories
+Q10 = df['rul'].quantile(0.1)
+Q50 = df['rul'].quantile(0.5)
+Q90 = df['rul'].quantile(0.9)
+
+def rul_category(rul):
+    if rul < Q10:
+        return "Extremely Low RUL"
+    elif rul < Q50:
+        return "Moderately Low RUL"
+    elif rul < Q90:
+        return "Moderately High RUL"
+    else:
+        return "Extremely High RUL"
+
+df['rul_category'] = df['rul'].apply(rul_category)
+
+# Sensor columns
+sensor_columns = [col for col in df.columns if "sensor" in col]
+sensor_data = df[sensor_columns].values
+
+# Divide-and-Conquer Cluster Part
+def split_cluster(indices):
+    cluster_points = sensor_data[indices]
+    variances = np.var(cluster_points, axis=0)
+    split_dim = np.argmax(variances)
+    median_value = np.median(cluster_points[:, split_dim])
+
+    left, right = [], []
+    for idx in indices:
+        if sensor_data[idx, split_dim] <= median_value:
+            left.append(idx)
+        else:
+            right.append(idx)
+    return left, right
+# Produce 4 clusters
+
+clusters = [list(range(len(sensor_data)))]
+while len(clusters) < 4:
+    largest_cluster = max(clusters, key=len)
+    clusters.remove(largest_cluster)
+    left, right = split_cluster(largest_cluster)
+    clusters.append(left)
+    clusters.append(right)
+print("Number of clusters:", len(clusters))
+print("\nMajority RUL category per cluster:\n")
+for i, cluster in enumerate(clusters):
+    cluster_categories = df.iloc[cluster]['rul_category']
+    counts = cluster_categories.value_counts()
+    majority_class = counts.idxmax()
+    majority_count = counts.max()
+    print(f"Cluster {i+1}")
+    print("Size:", len(cluster))
+    print("Majority class:", majority_class)
+    print("Majority count:", majority_count)
+    print("Class distribution:")
+    print(counts)
+    print()
+
+# Closest Pair within each cluster
+def closest_pair_rows(data):
+    n = data.shape[0]
+    if n < 2:
+        return None
+    min_dist = float('inf')
+    pair = (0, 1)
+    for i in range(n):
+        for j in range(i + 1, n):
+            dist = np.linalg.norm(data[i] - data[j])
+            if dist < min_dist:
+                min_dist = dist
+                pair = (i, j)
+    return pair[0], pair[1], min_dist
+
+print("\nClosest Pair Analysis Within Clusters:\n")
+for i, cluster in enumerate(clusters):
+    cluster_data = sensor_data[cluster]
+    if len(cluster_data) < 2:
+        print(f"Cluster {i+1} too small for closest pair analysis.")
+        continue
+    idx1, idx2, dist = closest_pair_rows(cluster_data)
+    print(f"Cluster {i+1}: Closest pair of points = {idx1}, {idx2}, distance = {dist:.2f}")
