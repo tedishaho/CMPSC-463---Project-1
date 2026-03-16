@@ -1,0 +1,63 @@
+import pandas as pd
+import random
+import numpy as np
+
+# Path to my ZIPPED CSV file which has the sensor data and the timestamps from Kaggle
+zip_file_path = r"C:\Users\Tedi\Downloads\rul_hrs.csv.zip"
+
+# Part to read the CSV file directly from ZIP
+df = pd.read_csv(zip_file_path, compression='zip', nrows=10000)
+
+# 4 categories of the quantiles
+Q10 = df['rul'].quantile(0.1)
+Q50 = df['rul'].quantile(0.5)
+Q90 = df['rul'].quantile(0.9)
+def rul_category(rul):
+    if rul < Q10:
+        return "Extremely Low RUL"
+    elif rul < Q50:
+        return "Moderately Low RUL"
+    elif rul < Q90:
+        return "Moderately High RUL"
+    else:
+        return "Extremely High RUL"
+
+df['rul_category'] = df['rul'].apply(rul_category)
+
+# Check category distribution
+print(df['rul_category'].value_counts())
+# Use random library to select 10 sensors
+sensor_columns = [col for col in df.columns if "sensor" in col]
+selected_sensors = random.sample(sensor_columns, 10)
+print("Selected sensors for analysis:", selected_sensors)
+
+# Step 1: Divide-and-Conquer Segmentation Function
+
+def divide_and_conquer(signal, start=0, end=None, threshold=0.5):
+    if end is None:
+        end = len(signal)
+    segment = signal[start:end]
+    var = np.var(segment)
+    # If variance exceeds threshold, split further
+    if var > threshold and (end - start) > 1:
+        mid = start + (end - start) // 2
+        left_segments = divide_and_conquer(signal, start, mid, threshold)
+        right_segments = divide_and_conquer(signal, mid, end, threshold)
+        return left_segments + right_segments
+    else:
+        return [(start, end)]  # stable segment
+
+# Step 2: Segment the 10 sensors
+segmentation_results = {}  # store segments per sensor
+complexity_scores = {}  # store number of segments
+# Threshold for splitting
+threshold = 0.5
+for sensor in selected_sensors:
+    signal = df[sensor].values
+    segments = divide_and_conquer(signal, threshold=threshold)
+    segmentation_results[sensor] = segments
+    complexity_scores[sensor] = len(segments)
+# Step 3: Print the Segmentation Complexity score
+print("Segmentation Complexity Scores (number of segments per sensor):")
+for sensor, score in complexity_scores.items():
+    print(f"{sensor}: {score}")
